@@ -39,13 +39,14 @@ export async function POST(request) {
     });
 
     return NextResponse.json({
+      success: true,  // ← Add this
       url: result.secure_url,
       publicId: result.public_id,
     });
   } catch (error) {
     console.error('Upload error:', error);
     return NextResponse.json(
-      { error: error.message || 'Upload failed' },
+      { success: false, error: error.message || 'Upload failed' },
       { status: 500 }
     );
   }

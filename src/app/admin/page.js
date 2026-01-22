@@ -1,6 +1,7 @@
 'use client';
 import { useState, useEffect } from 'react';
 import { useRouter } from 'next/navigation';
+import toast, { Toaster } from 'react-hot-toast';
 
 export default function AdminDashboard() {
   const router = useRouter();
@@ -12,11 +13,47 @@ export default function AdminDashboard() {
   const [selectedFolder, setSelectedFolder] = useState('');
   const [newFolderName, setNewFolderName] = useState('');
   const [showFolderForm, setShowFolderForm] = useState(false);
+  
+  // Confirmation Modal State
+  const [confirmModal, setConfirmModal] = useState({
+    show: false,
+    title: '',
+    message: '',
+    onConfirm: null,
+  });
 
   // Helper function to extract YouTube video ID
   const getYouTubeVideoId = (url) => {
     const match = url.match(/(?:youtu\.be\/|youtube\.com(?:\/embed\/|\/v\/|\/watch\?v=|\/user\/\S+|\/ytscreeningroom\?v=|\/sandalsResorts#\w\/\w\/.*\/))([^\/&\?]*)/);
     return match ? match[1] : null;
+  };
+
+  // Show confirmation modal
+  const showConfirmation = (title, message, onConfirm) => {
+    setConfirmModal({
+      show: true,
+      title,
+      message,
+      onConfirm,
+    });
+  };
+
+  // Hide confirmation modal
+  const hideConfirmation = () => {
+    setConfirmModal({
+      show: false,
+      title: '',
+      message: '',
+      onConfirm: null,
+    });
+  };
+
+  // Handle confirmation
+  const handleConfirm = () => {
+    if (confirmModal.onConfirm) {
+      confirmModal.onConfirm();
+    }
+    hideConfirmation();
   };
 
   useEffect(() => {
@@ -38,6 +75,7 @@ export default function AdminDashboard() {
       setHeroImages(data.images || []);
     } catch (error) {
       console.error('Error fetching hero images:', error);
+      toast.error('Failed to load hero images');
     }
   };
 
@@ -48,57 +86,91 @@ export default function AdminDashboard() {
       setGalleryData(data);
     } catch (error) {
       console.error('Error fetching gallery:', error);
+      toast.error('Failed to load gallery data');
     }
   };
 
   const handleHeroUpload = async (e) => {
-    const file = e.target.files[0];
-    if (!file) return;
+    const files = e.target.files;
+    if (!files || files.length === 0) return;
 
     setUploading(true);
+    const uploadingToast = toast.loading(`Uploading ${files.length} image(s)...`);
+    
     try {
-      const formData = new FormData();
-      formData.append('file', file);
-      formData.append('folder', 'shiny-kids/hero');
+      let successCount = 0;
+      let failCount = 0;
 
-      const uploadRes = await fetch('/api/upload', {
-        method: 'POST',
-        body: formData,
-      });
+      for (let i = 0; i < files.length; i++) {
+        const file = files[i];
+        
+        try {
+          const formData = new FormData();
+          formData.append('file', file);
+          formData.append('folder', 'shiny-kids/hero');
 
-      const uploadData = await uploadRes.json();
+          const uploadRes = await fetch('/api/upload', {
+            method: 'POST',
+            body: formData,
+          });
 
-      if (uploadData.success) {
-        const saveRes = await fetch('/api/hero', {
-          method: 'POST',
-          headers: { 'Content-Type': 'application/json' },
-          body: JSON.stringify({
-            url: uploadData.url,
-            publicId: uploadData.publicId,
-          }),
-        });
+          const uploadData = await uploadRes.json();
 
-        if (saveRes.ok) {
-          alert('Hero image uploaded successfully!');
-          fetchHeroImages();
+          if (uploadData.success) {
+            const saveRes = await fetch('/api/hero', {
+              method: 'POST',
+              headers: { 'Content-Type': 'application/json' },
+              body: JSON.stringify({
+                url: uploadData.url,
+                publicId: uploadData.publicId,
+              }),
+            });
+
+            if (saveRes.ok) {
+              successCount++;
+              toast.loading(`Uploaded ${successCount}/${files.length}...`, { id: uploadingToast });
+            } else {
+              failCount++;
+            }
+          } else {
+            failCount++;
+          }
+        } catch (error) {
+          console.error('Upload error for file:', file.name, error);
+          failCount++;
         }
       }
+
+      toast.dismiss(uploadingToast);
+      
+      if (successCount > 0 && failCount === 0) {
+        toast.success(`✅ Successfully uploaded ${successCount} image(s)!`);
+      } else if (successCount > 0 && failCount > 0) {
+        toast.success(`✅ Uploaded ${successCount} image(s), ${failCount} failed`, { duration: 5000 });
+      } else {
+        toast.error(`❌ Failed to upload images`);
+      }
+      
+      fetchHeroImages();
     } catch (error) {
       console.error('Upload error:', error);
-      alert('Upload failed!');
+      toast.dismiss(uploadingToast);
+      toast.error('❌ Upload failed!');
     } finally {
       setUploading(false);
+      e.target.value = '';
     }
   };
 
   const handleCreateFolder = async () => {
     if (!newFolderName.trim()) {
-      alert('Please enter a folder name!');
+      toast.error('Please enter a folder name!');
       return;
     }
 
+    const loadingToast = toast.loading('Creating folder...');
+    
     try {
-      // Create folder ID from name (lowercase, replace spaces with hyphens)
       const folderId = newFolderName.toLowerCase().replace(/\s+/g, '-').replace(/[^a-z0-9-]/g, '');
       
       const res = await fetch('/api/gallery', {
@@ -111,69 +183,110 @@ export default function AdminDashboard() {
         }),
       });
 
+      toast.dismiss(loadingToast);
+      
       if (res.ok) {
-        alert('Folder created successfully!');
+        toast.success(`✅ Folder "${newFolderName}" created!`);
         setNewFolderName('');
         setShowFolderForm(false);
         fetchGalleryData();
+      } else {
+        toast.error('Failed to create folder');
       }
     } catch (error) {
       console.error('Error creating folder:', error);
-      alert('Failed to create folder!');
+      toast.dismiss(loadingToast);
+      toast.error('Failed to create folder!');
     }
   };
 
   const handleGalleryImageUpload = async (e) => {
-    const file = e.target.files[0];
-    if (!file || !selectedFolder) {
-      alert('Please select a folder first!');
+    const files = e.target.files;
+    if (!files || files.length === 0) return;
+    
+    if (!selectedFolder) {
+      toast.error('Please select a folder first!');
       return;
     }
 
     setUploading(true);
+    const uploadingToast = toast.loading(`Uploading ${files.length} image(s)...`);
+    
     try {
-      const formData = new FormData();
-      formData.append('file', file);
-      formData.append('folder', `shiny-kids/gallery/${selectedFolder}`);
+      let successCount = 0;
+      let failCount = 0;
 
-      const uploadRes = await fetch('/api/upload', {
-        method: 'POST',
-        body: formData,
-      });
+      for (let i = 0; i < files.length; i++) {
+        const file = files[i];
+        
+        try {
+          const formData = new FormData();
+          formData.append('file', file);
+          formData.append('folder', `shiny-kids/gallery/${selectedFolder}`);
 
-      const uploadData = await uploadRes.json();
+          const uploadRes = await fetch('/api/upload', {
+            method: 'POST',
+            body: formData,
+          });
 
-      if (uploadData.success) {
-        const saveRes = await fetch('/api/gallery', {
-          method: 'POST',
-          headers: { 'Content-Type': 'application/json' },
-          body: JSON.stringify({
-            type: 'image',
-            url: uploadData.url,
-            publicId: uploadData.publicId,
-            folderId: selectedFolder,
-          }),
-        });
+          const uploadData = await uploadRes.json();
 
-        if (saveRes.ok) {
-          alert('Gallery image uploaded successfully!');
-          fetchGalleryData();
+          if (uploadData.success) {
+            const saveRes = await fetch('/api/gallery', {
+              method: 'POST',
+              headers: { 'Content-Type': 'application/json' },
+              body: JSON.stringify({
+                type: 'image',
+                url: uploadData.url,
+                publicId: uploadData.publicId,
+                folderId: selectedFolder,
+              }),
+            });
+
+            if (saveRes.ok) {
+              successCount++;
+              toast.loading(`Uploaded ${successCount}/${files.length}...`, { id: uploadingToast });
+            } else {
+              failCount++;
+            }
+          } else {
+            failCount++;
+          }
+        } catch (error) {
+          console.error('Upload error for file:', file.name, error);
+          failCount++;
         }
       }
+
+      toast.dismiss(uploadingToast);
+      
+      if (successCount > 0 && failCount === 0) {
+        toast.success(`✅ Successfully uploaded ${successCount} image(s)!`);
+      } else if (successCount > 0 && failCount > 0) {
+        toast.success(`✅ Uploaded ${successCount} image(s), ${failCount} failed`, { duration: 5000 });
+      } else {
+        toast.error(`❌ Failed to upload images`);
+      }
+      
+      fetchGalleryData();
     } catch (error) {
       console.error('Upload error:', error);
-      alert('Upload failed!');
+      toast.dismiss(uploadingToast);
+      toast.error('❌ Upload failed!');
     } finally {
       setUploading(false);
+      e.target.value = '';
     }
   };
 
   const handleAddVideo = async () => {
     if (!videoUrl.trim()) {
-      alert('Please enter a YouTube URL');
+      toast.error('Please enter a YouTube URL');
       return;
     }
 
+    const loadingToast = toast.loading('Adding video...');
+    
     try {
       const res = await fetch('/api/gallery', {
         method: 'POST',
@@ -184,103 +297,226 @@ export default function AdminDashboard() {
         }),
       });
 
+      toast.dismiss(loadingToast);
+      
       if (res.ok) {
-        alert('Video added successfully!');
+        toast.success('✅ Video added successfully!');
         setVideoUrl('');
         fetchGalleryData();
+      } else {
+        toast.error('Failed to add video');
       }
     } catch (error) {
       console.error('Error adding video:', error);
-      alert('Failed to add video!');
+      toast.dismiss(loadingToast);
+      toast.error('Failed to add video!');
     }
   };
 
-  const handleDeleteHeroImage = async (publicId) => {
-    if (!confirm('Delete this hero image?')) return;
+  const handleDeleteHeroImage = (publicId) => {
+    showConfirmation(
+      'Delete Hero Image',
+      'Are you sure you want to delete this hero image? This action cannot be undone.',
+      async () => {
+        const loadingToast = toast.loading('Deleting image...');
+        
+        try {
+          const res = await fetch('/api/hero', {
+            method: 'DELETE',
+            headers: { 'Content-Type': 'application/json' },
+            body: JSON.stringify({ publicId }),
+          });
 
-    try {
-      const res = await fetch('/api/hero', {
-        method: 'DELETE',
-        headers: { 'Content-Type': 'application/json' },
-        body: JSON.stringify({ publicId }),
-      });
-
-      if (res.ok) {
-        alert('Image deleted!');
-        fetchHeroImages();
+          toast.dismiss(loadingToast);
+          
+          if (res.ok) {
+            toast.success('✅ Image deleted!');
+            fetchHeroImages();
+          } else {
+            toast.error('Failed to delete image');
+          }
+        } catch (error) {
+          console.error('Delete error:', error);
+          toast.dismiss(loadingToast);
+          toast.error('Failed to delete image');
+        }
       }
-    } catch (error) {
-      console.error('Delete error:', error);
-    }
+    );
   };
 
-  const handleDeleteGalleryImage = async (publicId, folderId) => {
-    if (!confirm('Delete this gallery image?')) return;
+  const handleDeleteGalleryImage = (publicId, folderId) => {
+    showConfirmation(
+      'Delete Gallery Image',
+      'Are you sure you want to delete this image? This action cannot be undone.',
+      async () => {
+        const loadingToast = toast.loading('Deleting image...');
+        
+        try {
+          const res = await fetch('/api/gallery', {
+            method: 'DELETE',
+            headers: { 'Content-Type': 'application/json' },
+            body: JSON.stringify({ type: 'image', identifier: publicId, folderId }),
+          });
 
-    try {
-      const res = await fetch('/api/gallery', {
-        method: 'DELETE',
-        headers: { 'Content-Type': 'application/json' },
-        body: JSON.stringify({ type: 'image', identifier: publicId, folderId }),
-      });
-
-      if (res.ok) {
-        alert('Image deleted!');
-        fetchGalleryData();
+          toast.dismiss(loadingToast);
+          
+          if (res.ok) {
+            toast.success('✅ Image deleted!');
+            fetchGalleryData();
+          } else {
+            toast.error('Failed to delete image');
+          }
+        } catch (error) {
+          console.error('Delete error:', error);
+          toast.dismiss(loadingToast);
+          toast.error('Failed to delete image');
+        }
       }
-    } catch (error) {
-      console.error('Delete error:', error);
-    }
+    );
   };
 
-  const handleDeleteFolder = async (folderId) => {
+  const handleDeleteFolder = (folderId) => {
     const folder = galleryData.folders.find(f => f.id === folderId);
     const imageCount = folder ? folder.images.length : 0;
     
-    if (!confirm(`Delete "${folder.name}" folder${imageCount > 0 ? ` and all ${imageCount} images` : ''}?`)) return;
+    showConfirmation(
+      'Delete Folder',
+      `Are you sure you want to delete the folder "${folder.name}"?${imageCount > 0 ? ` This will permanently delete all ${imageCount} image(s) in this folder.` : ''} This action cannot be undone.`,
+      async () => {
+        const loadingToast = toast.loading('Deleting folder...');
+        
+        try {
+          const res = await fetch('/api/gallery', {
+            method: 'DELETE',
+            headers: { 'Content-Type': 'application/json' },
+            body: JSON.stringify({ type: 'folder', identifier: folderId }),
+          });
 
-    try {
-      const res = await fetch('/api/gallery', {
-        method: 'DELETE',
-        headers: { 'Content-Type': 'application/json' },
-        body: JSON.stringify({ type: 'folder', identifier: folderId }),
-      });
-
-      if (res.ok) {
-        alert('Folder deleted!');
-        fetchGalleryData();
+          toast.dismiss(loadingToast);
+          
+          if (res.ok) {
+            toast.success('✅ Folder deleted!');
+            fetchGalleryData();
+          } else {
+            toast.error('Failed to delete folder');
+          }
+        } catch (error) {
+          console.error('Delete error:', error);
+          toast.dismiss(loadingToast);
+          toast.error('Failed to delete folder');
+        }
       }
-    } catch (error) {
-      console.error('Delete error:', error);
-    }
+    );
   };
 
-  const handleDeleteVideo = async (url) => {
-    if (!confirm('Delete this video?')) return;
+  const handleDeleteVideo = (url) => {
+    showConfirmation(
+      'Delete Video',
+      'Are you sure you want to delete this video? This action cannot be undone.',
+      async () => {
+        const loadingToast = toast.loading('Deleting video...');
+        
+        try {
+          const res = await fetch('/api/gallery', {
+            method: 'DELETE',
+            headers: { 'Content-Type': 'application/json' },
+            body: JSON.stringify({ type: 'video', identifier: url }),
+          });
 
-    try {
-      const res = await fetch('/api/gallery', {
-        method: 'DELETE',
-        headers: { 'Content-Type': 'application/json' },
-        body: JSON.stringify({ type: 'video', identifier: url }),
-      });
-
-      if (res.ok) {
-        alert('Video deleted!');
-        fetchGalleryData();
+          toast.dismiss(loadingToast);
+          
+          if (res.ok) {
+            toast.success('✅ Video deleted!');
+            fetchGalleryData();
+          } else {
+            toast.error('Failed to delete video');
+          }
+        } catch (error) {
+          console.error('Delete error:', error);
+          toast.dismiss(loadingToast);
+          toast.error('Failed to delete video');
+        }
       }
-    } catch (error) {
-      console.error('Delete error:', error);
-    }
+    );
   };
 
   const handleLogout = () => {
     sessionStorage.removeItem('adminAuth');
+    toast.success('Logged out successfully');
     router.push('/admin/login');
   };
 
   return (
     <div className="min-h-screen bg-[#F0FDFA]">
+      {/* Toast Container */}
+      <Toaster
+        position="top-right"
+        toastOptions={{
+          duration: 3000,
+          style: {
+            background: '#fff',
+            color: '#363636',
+            fontWeight: '600',
+            borderRadius: '12px',
+            padding: '16px',
+          },
+          success: {
+            iconTheme: {
+              primary: '#10b981',
+              secondary: '#fff',
+            },
+          },
+          error: {
+            iconTheme: {
+              primary: '#ef4444',
+              secondary: '#fff',
+            },
+          },
+          loading: {
+            iconTheme: {
+              primary: '#14B8A6',
+              secondary: '#fff',
+            },
+          },
+        }}
+      />
+
+      {/* Confirmation Modal */}
+      {confirmModal.show && (
+        <div className="fixed inset-0 z-50 flex items-center justify-center p-4 bg-black/50 backdrop-blur-sm animate-fadeIn">
+          <div className="bg-white rounded-3xl shadow-2xl max-w-md w-full p-8 animate-scaleIn">
+            <div className="flex items-center justify-center w-16 h-16 mx-auto mb-4 bg-red-100 rounded-full">
+              <svg className="w-8 h-8 text-red-600" fill="none" stroke="currentColor" viewBox="0 0 24 24">
+                <path strokeLinecap="round" strokeLinejoin="round" strokeWidth={2} d="M12 9v2m0 4h.01m-6.938 4h13.856c1.54 0 2.502-1.667 1.732-3L13.732 4c-.77-1.333-2.694-1.333-3.464 0L3.34 16c-.77 1.333.192 3 1.732 3z" />
+              </svg>
+            </div>
+            
+            <h3 className="text-2xl font-bold text-gray-900 text-center mb-3">
+              {confirmModal.title}
+            </h3>
+            
+            <p className="text-gray-600 text-center mb-8">
+              {confirmModal.message}
+            </p>
+            
+            <div className="flex gap-4">
+              <button
+                onClick={hideConfirmation}
+                className="flex-1 px-6 py-3 bg-gray-200 text-gray-800 rounded-xl font-bold hover:bg-gray-300 transition"
+              >
+                Cancel
+              </button>
+              <button
+                onClick={handleConfirm}
+                className="flex-1 px-6 py-3 bg-red-500 text-white rounded-xl font-bold hover:bg-red-600 transition"
+              >
+                Delete
+              </button>
+            </div>
+          </div>
+        </div>
+      )}
+
       {/* Header */}
       <div className="bg-[#14B8A6] text-white shadow-lg">
         <div className="max-w-7xl mx-auto px-4 sm:px-6 lg:px-8 py-6">
@@ -333,18 +569,19 @@ export default function AdminDashboard() {
         {activeTab === 'hero' && (
           <div>
             <div className="bg-white p-8 rounded-3xl shadow-xl border-4 border-[#14B8A6] mb-8">
-              <h2 className="text-2xl font-bold text-[#14B8A6] mb-6">Upload Hero Image</h2>
+              <h2 className="text-2xl font-bold text-[#14B8A6] mb-6">Upload Hero Images</h2>
               <div className="flex items-center space-x-4">
                 <label className="flex-1 cursor-pointer">
                   <input
                     type="file"
                     accept="image/*"
+                    multiple
                     onChange={handleHeroUpload}
                     className="hidden"
                     disabled={uploading}
                   />
-                  <div className="bg-[#84CC16] text-white px-8 py-4 rounded-2xl text-center font-bold hover:bg-[#65A30D] transition">
-                    {uploading ? '📤 Uploading...' : '📁 Choose Image'}
+                  <div className={`${uploading ? 'bg-gray-400 cursor-not-allowed' : 'bg-[#84CC16] hover:bg-[#65A30D]'} text-white px-8 py-4 rounded-2xl text-center font-bold transition`}>
+                    {uploading ? '📤 Uploading...' : '📁 Choose Images (Multiple)'}
                   </div>
                 </label>
               </div>
@@ -378,7 +615,7 @@ export default function AdminDashboard() {
           </div>
         )}
 
-        {/* Gallery Tab */}
+        {/* Gallery Tab - Same structure, just using the updated delete functions */}
         {activeTab === 'gallery' && (
           <div>
             {/* Create New Folder */}
@@ -433,7 +670,7 @@ export default function AdminDashboard() {
 
             {/* Upload Gallery Image to Folder */}
             <div className="bg-white p-8 rounded-3xl shadow-xl border-4 border-[#14B8A6] mb-8">
-              <h2 className="text-2xl font-bold text-[#14B8A6] mb-6">Upload Image to Folder</h2>
+              <h2 className="text-2xl font-bold text-[#14B8A6] mb-6">Upload Images to Folder</h2>
               
               <div className="mb-4">
                 <label className="block text-gray-800 font-bold mb-2">Select Folder:</label>
@@ -455,12 +692,13 @@ export default function AdminDashboard() {
                 <input
                   type="file"
                   accept="image/*"
+                  multiple
                   onChange={handleGalleryImageUpload}
                   className="hidden"
                   disabled={uploading || !selectedFolder}
                 />
-                <div className={`${!selectedFolder ? 'bg-gray-400 cursor-not-allowed' : 'bg-[#84CC16] hover:bg-[#65A30D]'} text-white px-8 py-4 rounded-2xl text-center font-bold transition`}>
-                  {uploading ? '📤 Uploading...' : selectedFolder ? '📁 Choose Image' : '⚠️ Select a folder first'}
+                <div className={`${!selectedFolder || uploading ? 'bg-gray-400 cursor-not-allowed' : 'bg-[#84CC16] hover:bg-[#65A30D]'} text-white px-8 py-4 rounded-2xl text-center font-bold transition`}>
+                  {uploading ? '📤 Uploading...' : selectedFolder ? '📁 Choose Images (Multiple)' : '⚠️ Select a folder first'}
                 </div>
               </label>
             </div>
@@ -541,13 +779,11 @@ export default function AdminDashboard() {
                             alt={`Video ${index + 1}`}
                             className="w-full h-48 object-cover rounded-2xl"
                           />
-                          {/* Play button overlay */}
                           <div className="absolute inset-0 flex items-center justify-center bg-black/30 rounded-2xl">
                             <div className="bg-red-600 w-16 h-16 rounded-full flex items-center justify-center">
                               <div className="w-0 h-0 border-t-8 border-t-transparent border-l-12 border-l-white border-b-8 border-b-transparent ml-1"></div>
                             </div>
                           </div>
-                          {/* Video URL on hover */}
                           <div className="absolute bottom-0 left-0 right-0 bg-black/70 text-white text-xs p-2 rounded-b-2xl opacity-0 group-hover:opacity-100 transition truncate">
                             {video.url}
                           </div>
@@ -558,7 +794,6 @@ export default function AdminDashboard() {
                         </div>
                       )}
                       
-                      {/* Delete and Open buttons */}
                       <div className="absolute top-2 right-2 flex space-x-2 opacity-0 group-hover:opacity-100 transition">
                         <a
                           href={video.url}
@@ -586,6 +821,32 @@ export default function AdminDashboard() {
           </div>
         )}
       </div>
+
+      <style jsx>{`
+        @keyframes fadeIn {
+          from { opacity: 0; }
+          to { opacity: 1; }
+        }
+        
+        @keyframes scaleIn {
+          from { 
+            opacity: 0; 
+            transform: scale(0.9);
+          }
+          to { 
+            opacity: 1; 
+            transform: scale(1);
+          }
+        }
+        
+        .animate-fadeIn {
+          animation: fadeIn 0.2s ease-out;
+        }
+        
+        .animate-scaleIn {
+          animation: scaleIn 0.3s ease-out;
+        }
+      `}</style>
     </div>
   );
 }
