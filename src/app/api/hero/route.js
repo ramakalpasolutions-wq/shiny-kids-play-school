@@ -1,6 +1,7 @@
 import { NextResponse } from 'next/server';
-import { put, list, del } from '@vercel/blob';
 import { v2 as cloudinary } from 'cloudinary';
+import fs from 'fs/promises';
+import path from 'path';
 
 // Configure Cloudinary
 cloudinary.config({
@@ -9,23 +10,42 @@ cloudinary.config({
   api_secret: process.env.CLOUDINARY_API_SECRET,
 });
 
+const ROOT = process.cwd();
+const DATA_DIR = path.join(ROOT, 'data');
+const HERO_FILE = path.join(DATA_DIR, 'hero.json');
+
+// Ensure data directory and file exist
+async function ensureFiles() {
+  await fs.mkdir(DATA_DIR, { recursive: true });
+  try {
+    await fs.access(HERO_FILE);
+  } catch {
+    await fs.writeFile(HERO_FILE, JSON.stringify({ images: [] }, null, 2), 'utf8');
+  }
+}
+
+// Read hero data
+async function readHeroData() {
+  await ensureFiles();
+  const raw = await fs.readFile(HERO_FILE, 'utf8');
+  const data = JSON.parse(raw);
+  return data.images || [];
+}
+
+// Write hero data
+async function writeHeroData(images) {
+  await ensureFiles();
+  await fs.writeFile(HERO_FILE, JSON.stringify({ images }, null, 2), 'utf8');
+}
+
 // GET - Fetch hero images
 export async function GET() {
   try {
-    const { blobs } = await list({ prefix: 'hero-data.json' });
-    
-    if (blobs.length === 0) {
-      return NextResponse.json({ images: [] });
-    }
-
-    const latestBlob = blobs[0];
-    const response = await fetch(latestBlob.url);
-    const data = await response.json();
-    
-    return NextResponse.json({ images: data.images || [] });
+    const images = await readHeroData();
+    return NextResponse.json({ images });
   } catch (error) {
     console.error('Hero fetch error:', error);
-    return NextResponse.json({ images: [] });
+    return NextResponse.json({ images: [] }, { status: 500 });
   }
 }
 
@@ -33,32 +53,15 @@ export async function GET() {
 export async function POST(request) {
   try {
     const body = await request.json();
+    const images = await readHeroData();
     
-    // Get existing data
-    const { blobs } = await list({ prefix: 'hero-data.json' });
-    let images = [];
-    
-    if (blobs.length > 0) {
-      const response = await fetch(blobs[0].url);
-      const data = await response.json();
-      images = data.images || [];
-      
-      // Delete old blob before creating new one
-      await del(blobs[0].url);
-    }
-    
-    // Add new image
     images.push({
       url: body.url,
       publicId: body.publicId,
       uploadedAt: new Date().toISOString(),
     });
     
-    // Save to blob with overwrite allowed
-    await put('hero-data.json', JSON.stringify({ images }), {
-      access: 'public',
-      contentType: 'application/json',
-    });
+    await writeHeroData(images);
     
     return NextResponse.json({ success: true });
   } catch (error) {
@@ -82,27 +85,10 @@ export async function DELETE(request) {
       console.error('Cloudinary delete error:', error);
     }
     
-    // Get existing data
-    const { blobs } = await list({ prefix: 'hero-data.json' });
-    let images = [];
-    
-    if (blobs.length > 0) {
-      const response = await fetch(blobs[0].url);
-      const data = await response.json();
-      images = data.images || [];
-      
-      // Delete old blob
-      await del(blobs[0].url);
-    }
-    
-    // Remove image
-    images = images.filter(img => img.publicId !== body.publicId);
-    
-    // Save updated data
-    await put('hero-data.json', JSON.stringify({ images }), {
-      access: 'public',
-      contentType: 'application/json',
-    });
+    // Remove from data
+    const images = await readHeroData();
+    const updatedImages = images.filter(img => img.publicId !== body.publicId);
+    await writeHeroData(updatedImages);
     
     return NextResponse.json({ success: true });
   } catch (error) {
