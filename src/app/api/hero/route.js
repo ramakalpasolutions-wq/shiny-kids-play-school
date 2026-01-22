@@ -1,5 +1,5 @@
 import { NextResponse } from 'next/server';
-import { put, list } from '@vercel/blob';
+import { put, list, del } from '@vercel/blob';
 import { v2 as cloudinary } from 'cloudinary';
 
 // Configure Cloudinary
@@ -12,7 +12,7 @@ cloudinary.config({
 // GET - Fetch hero images
 export async function GET() {
   try {
-    const { blobs } = await list({ prefix: 'hero-data' });
+    const { blobs } = await list({ prefix: 'hero-data.json' });
     
     if (blobs.length === 0) {
       return NextResponse.json({ images: [] });
@@ -35,13 +35,16 @@ export async function POST(request) {
     const body = await request.json();
     
     // Get existing data
-    const { blobs } = await list({ prefix: 'hero-data' });
+    const { blobs } = await list({ prefix: 'hero-data.json' });
     let images = [];
     
     if (blobs.length > 0) {
       const response = await fetch(blobs[0].url);
       const data = await response.json();
       images = data.images || [];
+      
+      // Delete old blob before creating new one
+      await del(blobs[0].url);
     }
     
     // Add new image
@@ -51,7 +54,7 @@ export async function POST(request) {
       uploadedAt: new Date().toISOString(),
     });
     
-    // Save to blob
+    // Save to blob with overwrite allowed
     await put('hero-data.json', JSON.stringify({ images }), {
       access: 'public',
       contentType: 'application/json',
@@ -80,13 +83,16 @@ export async function DELETE(request) {
     }
     
     // Get existing data
-    const { blobs } = await list({ prefix: 'hero-data' });
+    const { blobs } = await list({ prefix: 'hero-data.json' });
     let images = [];
     
     if (blobs.length > 0) {
       const response = await fetch(blobs[0].url);
       const data = await response.json();
       images = data.images || [];
+      
+      // Delete old blob
+      await del(blobs[0].url);
     }
     
     // Remove image

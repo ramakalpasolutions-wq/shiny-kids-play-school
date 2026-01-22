@@ -1,5 +1,5 @@
 import { NextResponse } from 'next/server';
-import { put, list } from '@vercel/blob';
+import { put, list, del } from '@vercel/blob';
 import { v2 as cloudinary } from 'cloudinary';
 
 // Configure Cloudinary
@@ -22,7 +22,7 @@ const DEFAULT_DATA = {
 // GET - Fetch gallery data
 export async function GET() {
   try {
-    const { blobs } = await list({ prefix: 'gallery-data' });
+    const { blobs } = await list({ prefix: 'gallery-data.json' });
     
     if (blobs.length === 0) {
       return NextResponse.json(DEFAULT_DATA);
@@ -48,12 +48,15 @@ export async function POST(request) {
     const body = await request.json();
     
     // Get existing data
-    const { blobs } = await list({ prefix: 'gallery-data' });
+    const { blobs } = await list({ prefix: 'gallery-data.json' });
     let data = DEFAULT_DATA;
     
     if (blobs.length > 0) {
       const response = await fetch(blobs[0].url);
       data = await response.json();
+      
+      // Delete old blob
+      await del(blobs[0].url);
     }
     
     // Create folder
@@ -106,12 +109,15 @@ export async function DELETE(request) {
     console.log('Delete request:', body);
     
     // Get existing data
-    const { blobs } = await list({ prefix: 'gallery-data' });
+    const { blobs } = await list({ prefix: 'gallery-data.json' });
     let data = DEFAULT_DATA;
     
     if (blobs.length > 0) {
       const response = await fetch(blobs[0].url);
       data = await response.json();
+      
+      // Delete old blob
+      await del(blobs[0].url);
     }
     
     // Delete folder and all its images
