@@ -6,8 +6,8 @@ import Footer from '@/components/Footer';
 const inter = Inter({ subsets: ['latin'] });
 
 export const metadata = {
-  title: 'Shiny Kids Play School - Uppal Kalan',
-  description: 'Best play school in Uppal Kalan, Telangana. Quality education for young children.',
+  title: 'Shiny Kids Play School ',
+  description: 'A fun and nurturing preschool for children',
 };
 
 export default function RootLayout({ children }) {
