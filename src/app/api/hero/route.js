@@ -1,50 +1,49 @@
-import { NextResponse } from 'next/server';
-import { v2 as cloudinary } from 'cloudinary';
-import fs from 'fs/promises';
-import path from 'path';
+import fs from "fs/promises";
+import path from "path";
+import { NextResponse } from "next/server";
+import { v2 as cloudinary } from "cloudinary";
 
-// Configure Cloudinary
+// Cloudinary config
 cloudinary.config({
   cloud_name: process.env.NEXT_PUBLIC_CLOUDINARY_CLOUD_NAME,
   api_key: process.env.CLOUDINARY_API_KEY,
   api_secret: process.env.CLOUDINARY_API_SECRET,
+  secure: true,
 });
 
 const ROOT = process.cwd();
-const DATA_DIR = path.join(ROOT, 'data');
-const HERO_FILE = path.join(DATA_DIR, 'hero.json');
+// Use /tmp on Vercel (serverless), data/ locally
+const DATA_DIR = process.env.VERCEL ? "/tmp" : path.join(ROOT, "data");
+const HERO_FILE = path.join(DATA_DIR, "hero.json");
 
-// Ensure data directory and file exist
 async function ensureFiles() {
   await fs.mkdir(DATA_DIR, { recursive: true });
   try {
     await fs.access(HERO_FILE);
   } catch {
-    await fs.writeFile(HERO_FILE, JSON.stringify({ images: [] }, null, 2), 'utf8');
+    await fs.writeFile(HERO_FILE, JSON.stringify({ images: [] }, null, 2), "utf8");
   }
 }
 
-// Read hero data
-async function readHeroData() {
+async function readHero() {
   await ensureFiles();
-  const raw = await fs.readFile(HERO_FILE, 'utf8');
-  const data = JSON.parse(raw);
+  const raw = await fs.readFile(HERO_FILE, "utf8");
+  const data = raw ? JSON.parse(raw) : { images: [] };
   return data.images || [];
 }
 
-// Write hero data
-async function writeHeroData(images) {
+async function writeHero(images) {
   await ensureFiles();
-  await fs.writeFile(HERO_FILE, JSON.stringify({ images }, null, 2), 'utf8');
+  await fs.writeFile(HERO_FILE, JSON.stringify({ images }, null, 2), "utf8");
 }
 
 // GET - Fetch hero images
 export async function GET() {
   try {
-    const images = await readHeroData();
+    const images = await readHero();
     return NextResponse.json({ images });
-  } catch (error) {
-    console.error('Hero fetch error:', error);
+  } catch (err) {
+    console.error("Hero GET error:", err);
     return NextResponse.json({ images: [] }, { status: 500 });
   }
 }
@@ -53,7 +52,7 @@ export async function GET() {
 export async function POST(request) {
   try {
     const body = await request.json();
-    const images = await readHeroData();
+    const images = await readHero();
     
     images.push({
       url: body.url,
@@ -61,12 +60,12 @@ export async function POST(request) {
       uploadedAt: new Date().toISOString(),
     });
     
-    await writeHeroData(images);
+    await writeHero(images);
     
-    return NextResponse.json({ success: true });
-  } catch (error) {
-    console.error('Hero POST error:', error);
-    return NextResponse.json({ error: error.message }, { status: 500 });
+    return NextResponse.json({ success: true, images });
+  } catch (err) {
+    console.error("Hero POST error:", err);
+    return NextResponse.json({ error: err.message || String(err) }, { status: 500 });
   }
 }
 
@@ -75,24 +74,27 @@ export async function DELETE(request) {
   try {
     const body = await request.json();
     
-    console.log('Delete hero image:', body.publicId);
+    console.log("Delete hero image:", body.publicId);
     
     // Delete from Cloudinary
     try {
-      const result = await cloudinary.uploader.destroy(body.publicId);
-      console.log('Cloudinary delete result:', result);
+      const result = await cloudinary.uploader.destroy(body.publicId, {
+        invalidate: true,
+        resource_type: "image",
+      });
+      console.log("Cloudinary delete result:", result);
     } catch (error) {
-      console.error('Cloudinary delete error:', error);
+      console.warn("Cloudinary delete error:", error);
     }
     
-    // Remove from data
-    const images = await readHeroData();
+    // Remove from JSON
+    const images = await readHero();
     const updatedImages = images.filter(img => img.publicId !== body.publicId);
-    await writeHeroData(updatedImages);
+    await writeHero(updatedImages);
     
     return NextResponse.json({ success: true });
-  } catch (error) {
-    console.error('Hero DELETE error:', error);
-    return NextResponse.json({ error: error.message }, { status: 500 });
+  } catch (err) {
+    console.error("Hero DELETE error:", err);
+    return NextResponse.json({ error: err.message || String(err) }, { status: 500 });
   }
 }
