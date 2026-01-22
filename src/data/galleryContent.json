@@ -1,0 +1,65 @@
+{
+  "folders": [
+    {
+      "id": "classroom",
+      "name": "Classroom Activities",
+      "images": [
+        {
+          "url": "https://res.cloudinary.com/dohfmfl1g/image/upload/v1769060015/shiny-kids/gallery/classroom/ydjfcx0zmrjdnec8zuox.jpg",
+          "publicId": "shiny-kids/gallery/classroom/ydjfcx0zmrjdnec8zuox",
+          "uploadedAt": "2026-01-22T05:34:32.250Z"
+        }
+      ]
+    },
+    {
+      "id": "playground",
+      "name": "Playground Fun",
+      "images": [
+        {
+          "url": "https://res.cloudinary.com/dohfmfl1g/image/upload/v1769060027/shiny-kids/gallery/playground/kqmxln7ftwros7u7mmal.webp",
+          "publicId": "shiny-kids/gallery/playground/kqmxln7ftwros7u7mmal",
+          "uploadedAt": "2026-01-22T05:34:44.111Z"
+        }
+      ]
+    },
+    {
+      "id": "events",
+      "name": "Events & Celebrations",
+      "images": [
+        {
+          "url": "https://res.cloudinary.com/dohfmfl1g/image/upload/v1769060040/shiny-kids/gallery/events/t0uyasb3ahakon6jm7yn.jpg",
+          "publicId": "shiny-kids/gallery/events/t0uyasb3ahakon6jm7yn",
+          "uploadedAt": "2026-01-22T05:34:57.018Z"
+        }
+      ]
+    },
+    {
+      "id": "arts-crafts",
+      "name": "Arts & Crafts",
+      "images": [
+        {
+          "url": "https://res.cloudinary.com/dohfmfl1g/image/upload/v1769060052/shiny-kids/gallery/arts-crafts/bfxura5tpqcs7fjtnbjf.webp",
+          "publicId": "shiny-kids/gallery/arts-crafts/bfxura5tpqcs7fjtnbjf",
+          "uploadedAt": "2026-01-22T05:35:08.960Z"
+        }
+      ]
+    },
+    {
+      "id": "summer",
+      "name": "summer",
+      "images": [
+        {
+          "url": "https://res.cloudinary.com/dohfmfl1g/image/upload/v1769061719/shiny-kids/gallery/summer/iynlpzol9qejkff6n4oi.jpg",
+          "publicId": "shiny-kids/gallery/summer/iynlpzol9qejkff6n4oi",
+          "uploadedAt": "2026-01-22T06:02:55.965Z"
+        }
+      ]
+    }
+  ],
+  "videos": [
+    {
+      "url": "https://youtu.be/M43jraEawT8?si=UbCHyM-2DrX4VVxd",
+      "addedAt": "2026-01-22T05:35:35.125Z"
+    }
+  ]
+}
