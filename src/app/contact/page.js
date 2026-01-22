@@ -16,26 +16,62 @@ export default function Contact() {
     e.preventDefault();
     setSubmitting(true);
 
-    // Simulate API call
-    await new Promise(resolve => setTimeout(resolve, 1500));
+    try {
+      const response = await fetch('/api/contact', {
+        method: 'POST',
+        headers: {
+          'Content-Type': 'application/json',
+        },
+        body: JSON.stringify(formData),
+      });
 
-    console.log('Form submitted:', formData);
-    
-    toast.success('🎉 Thank you! We will get back to you soon!', {
-      duration: 4000,
-      style: {
-        background: '#84CC16',
-        color: '#fff',
-        fontSize: '16px',
-        fontWeight: 'bold',
-        padding: '16px 24px',
-        borderRadius: '12px',
-      },
-    });
+      const data = await response.json();
 
-    setFormData({ name: '', email: '', phone: '', message: '' });
-    setSubmitting(false);
+      if (response.ok && data.success) {
+        toast.success('🎉 Thank you! Check your email for confirmation!', {
+          duration: 5000,
+          style: {
+            background: '#84CC16',
+            color: '#fff',
+            fontSize: '16px',
+            fontWeight: 'bold',
+            padding: '16px 24px',
+            borderRadius: '12px',
+          },
+        });
+        setFormData({ name: '', email: '', phone: '', message: '' });
+      } else {
+        toast.error(`❌ ${data.message || 'Failed to send message. Please try again.'}`, {
+          duration: 4000,
+          style: {
+            background: '#ef4444',
+            color: '#fff',
+            fontSize: '16px',
+            fontWeight: 'bold',
+            padding: '16px 24px',
+            borderRadius: '12px',
+          },
+        });
+      }
+    } catch (error) {
+      console.error('Error:', error);
+      toast.error('❌ Something went wrong. Please try again later.', {
+        duration: 4000,
+        style: {
+          background: '#ef4444',
+          color: '#fff',
+          fontSize: '16px',
+          fontWeight: 'bold',
+          padding: '16px 24px',
+          borderRadius: '12px',
+        },
+      });
+    } finally {
+      setSubmitting(false);
+    }
   };
+
+
 
   const handleChange = (e) => {
     setFormData({ ...formData, [e.target.name]: e.target.value });
@@ -194,11 +230,10 @@ export default function Contact() {
               whileTap={{ scale: 0.95 }}
               type="submit"
               disabled={submitting}
-              className={`w-full py-5 rounded-2xl transition font-bold text-xl shadow-lg ${
-                submitting
-                  ? 'bg-gray-400 cursor-not-allowed'
-                  : 'bg-[#84CC16] hover:bg-[#65A30D] text-white'
-              }`}
+              className={`w-full py-5 rounded-2xl transition font-bold text-xl shadow-lg ${submitting
+                ? 'bg-gray-400 cursor-not-allowed'
+                : 'bg-[#84CC16] hover:bg-[#65A30D] text-white'
+                }`}
             >
               {submitting ? (
                 <span className="flex items-center justify-center">
@@ -247,7 +282,7 @@ export default function Contact() {
               </motion.span>
               Get In Touch
             </h2>
-            
+
             <motion.div
               variants={containerVariants}
               initial="hidden"
@@ -297,7 +332,7 @@ export default function Contact() {
               <h3 className="text-2xl font-bold text-[#65A30D]">Visit Our School!</h3>
             </div>
             <p className="text-gray-700 mb-4 text-lg leading-relaxed">
-              Come see our colorful classrooms and happy kids! Please call ahead to schedule 
+              Come see our colorful classrooms and happy kids! Please call ahead to schedule
               your visit! 🎈
             </p>
             <motion.div
