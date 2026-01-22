@@ -1,105 +1,177 @@
 import { NextResponse } from 'next/server';
-import fs from 'fs';
-import path from 'path';
+import clientPromise from '@/lib/mongodb';
+import { v2 as cloudinary } from 'cloudinary';
 
-const dataFilePath = path.join(process.cwd(), 'src/data/galleryContent.json');
+// Configure Cloudinary
+cloudinary.config({
+  cloud_name: process.env.NEXT_PUBLIC_CLOUDINARY_CLOUD_NAME,
+  api_key: process.env.CLOUDINARY_API_KEY,
+  api_secret: process.env.CLOUDINARY_API_SECRET,
+});
 
-// Initialize default structure if file doesn't exist
-function initializeGalleryData() {
-  const defaultData = {
-    folders: [
-      { id: 'classroom', name: 'Classroom Activities', images: [] },
-      { id: 'playground', name: 'Playground Fun', images: [] },
-      { id: 'events', name: 'Events & Celebrations', images: [] },
-      { id: 'arts-crafts', name: 'Arts & Crafts', images: [] },
-    ],
-    videos: [],
-  };
-
-  try {
-    if (!fs.existsSync(dataFilePath)) {
-      fs.writeFileSync(dataFilePath, JSON.stringify(defaultData, null, 2));
-    }
-  } catch (error) {
-    console.error('Error initializing gallery data:', error);
-  }
-}
-
+// GET - Fetch gallery data
 export async function GET() {
   try {
-    initializeGalleryData();
-    const fileData = fs.readFileSync(dataFilePath, 'utf8');
-    const data = JSON.parse(fileData);
-    return NextResponse.json(data);
+    const client = await clientPromise;
+    const db = client.db('shiny-kids');
+    
+    const galleryDoc = await db.collection('gallery').findOne({});
+    
+    if (!galleryDoc) {
+      return NextResponse.json({ folders: [], videos: [] });
+    }
+
+    return NextResponse.json({
+      folders: galleryDoc.folders || [],
+      videos: galleryDoc.videos || []
+    });
   } catch (error) {
-    return NextResponse.json({ folders: [], videos: [] });
+    console.error('Gallery fetch error:', error);
+    return NextResponse.json({ folders: [], videos: [] }, { status: 500 });
   }
 }
 
+// POST - Add image, video, or folder
 export async function POST(request) {
   try {
     const body = await request.json();
-    const { type, url, publicId, videoUrl, folderId } = body;
-    
-    const fileData = fs.readFileSync(dataFilePath, 'utf8');
-    const data = JSON.parse(fileData);
-    
-    if (type === 'image') {
-      // Find the folder and add image
-      const folder = data.folders.find(f => f.id === folderId);
-      if (folder) {
-        folder.images.push({
-          url,
-          publicId,
-          uploadedAt: new Date().toISOString(),
-        });
-      }
-    } else if (type === 'video') {
-      data.videos.push({
-        url: videoUrl,
-        addedAt: new Date().toISOString(),
-      });
-    } else if (type === 'folder') {
-      // Add new folder
-      const newFolder = {
-        id: body.id,
-        name: body.name,
-        images: [],
-      };
-      data.folders.push(newFolder);
+    const client = await clientPromise;
+    const db = client.db('shiny-kids');
+
+    // Create folder
+    if (body.type === 'folder') {
+      await db.collection('gallery').updateOne(
+        {},
+        {
+          $push: {
+            folders: {
+              id: body.id,
+              name: body.name,
+              images: []
+            }
+          }
+        },
+        { upsert: true }
+      );
+      return NextResponse.json({ success: true });
     }
-    
-    fs.writeFileSync(dataFilePath, JSON.stringify(data, null, 2));
-    
-    return NextResponse.json({ success: true, data });
+
+    // Add image to folder
+    if (body.type === 'image') {
+      await db.collection('gallery').updateOne(
+        { 'folders.id': body.folderId },
+        {
+          $push: {
+            'folders.$.images': {
+              url: body.url,
+              publicId: body.publicId
+            }
+          }
+        }
+      );
+      return NextResponse.json({ success: true });
+    }
+
+    // Add video
+    if (body.type === 'video') {
+      await db.collection('gallery').updateOne(
+        {},
+        {
+          $push: {
+            videos: { url: body.videoUrl }
+          }
+        },
+        { upsert: true }
+      );
+      return NextResponse.json({ success: true });
+    }
+
+    return NextResponse.json({ error: 'Invalid type' }, { status: 400 });
   } catch (error) {
-    return NextResponse.json({ error: 'Failed to save' }, { status: 500 });
+    console.error('Gallery POST error:', error);
+    return NextResponse.json({ error: error.message }, { status: 500 });
   }
 }
 
+// DELETE - Remove image, video, or folder
 export async function DELETE(request) {
   try {
-    const { type, identifier, folderId } = await request.json();
-    
-    const fileData = fs.readFileSync(dataFilePath, 'utf8');
-    const data = JSON.parse(fileData);
-    
-    if (type === 'image') {
-      // Find folder and remove image
-      const folder = data.folders.find(f => f.id === folderId);
-      if (folder) {
-        folder.images = folder.images.filter(img => img.publicId !== identifier);
+    const body = await request.json();
+    const client = await clientPromise;
+    const db = client.db('shiny-kids');
+
+    console.log('Delete request:', body);
+
+    // Delete folder and all its images
+    if (body.type === 'folder') {
+      // First, get the folder to delete all images from Cloudinary
+      const galleryDoc = await db.collection('gallery').findOne({});
+      const folder = galleryDoc?.folders?.find(f => f.id === body.identifier);
+
+      if (folder && folder.images) {
+        // Delete all images from Cloudinary
+        for (const image of folder.images) {
+          try {
+            await cloudinary.uploader.destroy(image.publicId);
+            console.log('Deleted from Cloudinary:', image.publicId);
+          } catch (error) {
+            console.error('Cloudinary delete error:', error);
+          }
+        }
       }
-    } else if (type === 'video') {
-      data.videos = data.videos.filter(vid => vid.url !== identifier);
-    } else if (type === 'folder') {
-      data.folders = data.folders.filter(f => f.id !== identifier);
+
+      // Remove folder from database
+      await db.collection('gallery').updateOne(
+        {},
+        {
+          $pull: {
+            folders: { id: body.identifier }
+          }
+        }
+      );
+
+      return NextResponse.json({ success: true });
     }
-    
-    fs.writeFileSync(dataFilePath, JSON.stringify(data, null, 2));
-    
-    return NextResponse.json({ success: true });
+
+    // Delete single image from folder
+    if (body.type === 'image') {
+      // Delete from Cloudinary
+      try {
+        const result = await cloudinary.uploader.destroy(body.identifier);
+        console.log('Cloudinary delete result:', result);
+      } catch (error) {
+        console.error('Cloudinary delete error:', error);
+      }
+
+      // Remove from database
+      await db.collection('gallery').updateOne(
+        { 'folders.id': body.folderId },
+        {
+          $pull: {
+            'folders.$.images': { publicId: body.identifier }
+          }
+        }
+      );
+
+      return NextResponse.json({ success: true });
+    }
+
+    // Delete video
+    if (body.type === 'video') {
+      await db.collection('gallery').updateOne(
+        {},
+        {
+          $pull: {
+            videos: { url: body.identifier }
+          }
+        }
+      );
+      return NextResponse.json({ success: true });
+    }
+
+    return NextResponse.json({ error: 'Invalid type' }, { status: 400 });
   } catch (error) {
-    return NextResponse.json({ error: 'Failed to delete' }, { status: 500 });
+    console.error('Gallery DELETE error:', error);
+    return NextResponse.json({ error: error.message }, { status: 500 });
   }
 }

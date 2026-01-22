@@ -30,7 +30,7 @@ export default function Navbar() {
             href="/" 
             className="flex items-center space-x-3 group"
           >
-            <span className="text-4xl group-hover:animate-bounce transition-all">✨</span>
+            <span className="text-4xl group-hover:animate-bounce transition-all"></span>
             <span className="text-white text-2xl font-bold group-hover:text-[#84CC16] transition-colors">
               Shiny Kids
             </span>
