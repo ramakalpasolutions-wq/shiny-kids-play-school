@@ -103,7 +103,7 @@ export default function Contact() {
     {
       emoji: '📍',
       title: 'Our Location',
-      details: ['Shiny Kids Play School', 'Uppal Kalan, Telangana', 'India']
+      details: ['Shiny Kids Play School', 'guntur, Andhra Pradesh', 'India']
     },
     {
       emoji: '📞',
